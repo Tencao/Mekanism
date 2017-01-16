@@ -84,15 +84,16 @@ public class PartUniversalCable extends PartTransmitter<EnergyAcceptorWrapper, E
 						if(CapabilityUtils.hasCapability(outputter, Capabilities.CABLE_OUTPUTTER_CAPABILITY, side.getOpposite()) && CapabilityUtils.hasCapability(outputter, Capabilities.ENERGY_STORAGE_CAPABILITY, side.getOpposite()))
 						{
 							IStrictEnergyStorage storage = CapabilityUtils.getCapability(outputter, Capabilities.ENERGY_STORAGE_CAPABILITY, side.getOpposite());
-							double received = Math.min(storage.getEnergy(), canDraw);
-							double toDraw = received;
-
-							if(received > 0)
+							if(storage != null && storage.getEnergy() > 0)
 							{
+								double received = Math.min(storage.getEnergy(), canDraw);
+								double toDraw = received;
+
 								toDraw -= takeEnergy(received, true);
+
+								storage.setEnergy(storage.getEnergy() - toDraw);
 							}
 
-							storage.setEnergy(storage.getEnergy() - toDraw);
 						}
 						else if(MekanismUtils.useTesla() && CapabilityUtils.hasCapability(outputter, Capabilities.TESLA_PRODUCER_CAPABILITY, side.getOpposite()))
 						{

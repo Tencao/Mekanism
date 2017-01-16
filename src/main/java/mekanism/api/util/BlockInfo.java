@@ -3,7 +3,8 @@ package mekanism.api.util;
 import net.minecraft.block.Block;
 import net.minecraft.item.ItemStack;
 
-//TODO: @Deprecated Just use IBlockState instead?
+/**Use vanilla provided IBlockState instead**/
+@Deprecated
 public class BlockInfo
 {
 	public Block block;

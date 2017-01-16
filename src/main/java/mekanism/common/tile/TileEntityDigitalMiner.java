@@ -1,7 +1,5 @@
 package mekanism.common.tile;
 
-import io.netty.buffer.ByteBuf;
-
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.EnumSet;
@@ -13,8 +11,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import io.netty.buffer.ByteBuf;
 import mekanism.api.Chunk3D;
 import mekanism.api.Coord4D;
+import mekanism.api.MekanismConfig.general;
 import mekanism.api.MekanismConfig.usage;
 import mekanism.api.Range4D;
 import mekanism.api.util.CapabilityUtils;
@@ -200,7 +200,7 @@ public class TileEntityDigitalMiner extends TileEntityElectricBlock implements I
 						{
 							int index = set.nextSetBit(next);
 							Coord4D coord = getCoordFromIndex(index);
-	
+
 							if(index == -1)
 							{
 								toRemove.add(chunk);
@@ -712,7 +712,7 @@ public class TileEntityDigitalMiner extends TileEntityElectricBlock implements I
 
 		for(MinerFilter filter : filters)
 		{
-			filterTags.appendTag(filter.write(new NBTTagCompound()));
+			filterTags.appendTag(filter.writeToNBT(new NBTTagCompound()));
 		}
 
 		if(filterTags.tagCount() != 0)
@@ -1033,9 +1033,17 @@ public class TileEntityDigitalMiner extends TileEntityElectricBlock implements I
 		return data;
 	}
 
+	/**
+	 * Return the total size of the area to be mined
+	 * 
+	 * @return
+	 */
 	public int getTotalSize()
 	{
-		return getDiameter()*getDiameter()*(maxY-minY+1);
+		if( general.minerAltOperation )
+			return getDiameter()*getDiameter()*(getPos().getY() + radius + 1);
+		else
+			return getDiameter()*getDiameter()*(maxY-minY+1);
 	}
 
 	public int getDiameter()
@@ -1045,16 +1053,20 @@ public class TileEntityDigitalMiner extends TileEntityElectricBlock implements I
 
 	public Coord4D getStartingCoord()
 	{
-		return new Coord4D(getPos().getX()-radius, minY, getPos().getZ()-radius, worldObj.provider.getDimension());
+		// Get stating coordinates based on operation type
+		if( general.minerAltOperation )
+			return new Coord4D(getPos().getX()-radius, getPos().getY()+radius, getPos().getZ()-radius, worldObj.provider.getDimension());
+		else
+			return new Coord4D(getPos().getX()-radius, minY, getPos().getZ()-radius, worldObj.provider.getDimension());
 	}
 
 	public Coord4D getCoordFromIndex(int index)
 	{
 		int diameter = getDiameter();
 		Coord4D start = getStartingCoord();
-
+		
 		int x = start.xCoord+index%diameter;
-		int y = start.yCoord+(index/diameter/diameter);
+		int y = general.minerAltOperation ? start.yCoord-(index/diameter/diameter) : start.yCoord+(index/diameter/diameter);
 		int z = start.zCoord+(index/diameter)%diameter;
 
 		return new Coord4D(x, y, z, worldObj.provider.getDimension());
@@ -1407,7 +1419,7 @@ public class TileEntityDigitalMiner extends TileEntityElectricBlock implements I
 
 		for(MinerFilter filter : filters)
 		{
-			filterTags.appendTag(filter.write(new NBTTagCompound()));
+			filterTags.appendTag(filter.writeToNBT(new NBTTagCompound()));
 		}
 
 		if(filterTags.tagCount() != 0)
@@ -1462,7 +1474,7 @@ public class TileEntityDigitalMiner extends TileEntityElectricBlock implements I
 
 		for(MinerFilter filter : filters)
 		{
-			filterTags.appendTag(filter.write(new NBTTagCompound()));
+			filterTags.appendTag(filter.writeToNBT(new NBTTagCompound()));
 		}
 
 		if(filterTags.tagCount() != 0)

@@ -6,10 +6,12 @@ import java.util.Map;
 
 import mekanism.api.Chunk3D;
 import mekanism.api.Coord4D;
-import mekanism.api.util.BlockInfo;
+import mekanism.api.MekanismConfig.general;
+import mekanism.api.util.GeometryUtils;
 import mekanism.common.tile.TileEntityBoundingBlock;
 import mekanism.common.tile.TileEntityDigitalMiner;
 import mekanism.common.util.MekanismUtils;
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.item.ItemStack;
@@ -19,20 +21,20 @@ import net.minecraftforge.fluids.IFluidBlock;
 
 public class ThreadMinerSearch extends Thread
 {
-	public TileEntityDigitalMiner tileEntity;
+	public TileEntityDigitalMiner digitalMiner;
 
 	public State state = State.IDLE;
 
 	public Map<Chunk3D, BitSet> oresToMine = new HashMap<Chunk3D, BitSet>();
 	public Map<Integer, MinerFilter> replaceMap = new HashMap<Integer, MinerFilter>();
 
-	public Map<BlockInfo, MinerFilter> acceptedItems = new HashMap<BlockInfo, MinerFilter>();
+	public Map<IBlockState, MinerFilter> acceptedItems = new HashMap<IBlockState, MinerFilter>();
 
 	public int found = 0;
 
-	public ThreadMinerSearch(TileEntityDigitalMiner tile)
+	public ThreadMinerSearch(TileEntityDigitalMiner tileEntity)
 	{
-		tileEntity = tile;
+		digitalMiner = tileEntity;
 	}
 
 	@Override
@@ -40,73 +42,98 @@ public class ThreadMinerSearch extends Thread
 	{
 		state = State.SEARCHING;
 
-		if(!tileEntity.inverse && tileEntity.filters.isEmpty())
+		if(!digitalMiner.inverse && digitalMiner.filters.isEmpty())
 		{
 			state = State.FINISHED;
 			return;
 		}
+		
+		Coord4D coord = digitalMiner.getStartingCoord();
+		int diameter = digitalMiner.getDiameter();
+		int size = digitalMiner.getTotalSize();
 
-		Coord4D coord = tileEntity.getStartingCoord();
-		int diameter = tileEntity.getDiameter();
-		int size = tileEntity.getTotalSize();
-		BlockInfo info = new BlockInfo(null, 0);
+		// Reset filters
+		for(MinerFilter filter : digitalMiner.filters)
+		{
+			filter.foundOres.clear();
+		}
 
 		for(int i = 0; i < size; i++)
 		{
 			int x = coord.xCoord+i%diameter;
 			int z = coord.zCoord+(i/diameter)%diameter;
-			int y = coord.yCoord+(i/diameter/diameter);
+			// Start at top or bottom, depending on operation mode
+			int y = general.minerAltOperation ? coord.yCoord-(i/diameter/diameter) : coord.yCoord+(i/diameter/diameter);
 
-			if(tileEntity.isInvalid())
+			if(digitalMiner.isInvalid())
 			{
 				return;
 			}
 
 			try {
-				if(tileEntity.getPos().getX() == x && tileEntity.getPos().getY() == y && tileEntity.getPos().getZ() == z)
+				if( y < 0 )
 				{
+					// Sanity check - shouldn't be needed, but just in case
+					// Skip blocks outside map bounds
+					continue;
+				}
+				if(digitalMiner.getPos().getX() == x && digitalMiner.getPos().getY() == y && digitalMiner.getPos().getZ() == z)
+				{
+					// Skip block containing miner
 					continue;
 				}
 	
-				if(tileEntity.getWorld().getChunkProvider().getLoadedChunk(x >> 4, z >> 4) == null)
+				if(digitalMiner.getWorld().getChunkProvider().getLoadedChunk(x >> 4, z >> 4) == null)
 				{
+					// Skip unloaded chunks
 					continue;
 				}
 	
-				TileEntity tile = tileEntity.getWorld().getTileEntity(new BlockPos(x, y, z));
+				TileEntity tileEntity = digitalMiner.getWorld().getTileEntity(new BlockPos(x, y, z));
 				
-				if(tile instanceof TileEntityBoundingBlock)
+				if(tileEntity instanceof TileEntityBoundingBlock)
 				{
+					// Skip bounding blocks
 					continue;
 				}
 
-				IBlockState state = tileEntity.getWorld().getBlockState(new BlockPos(x, y, z));
-				info.block = state.getBlock();
-				info.meta = state.getBlock().getMetaFromState(state);
+				IBlockState blockState = digitalMiner.getWorld().getBlockState(new BlockPos(x, y, z));
+				Block block = blockState.getBlock();
 	
-				if(info.block instanceof BlockLiquid || info.block instanceof IFluidBlock)
+				if(block instanceof BlockLiquid || block instanceof IFluidBlock)
 				{
+					// Skip fluid blocks
 					continue;
 				}
-	
-				if(info.block != null && !tileEntity.getWorld().isAirBlock(new BlockPos(x, y, z)) && state.getBlockHardness(tileEntity.getWorld(), new BlockPos(x, y, z)) >= 0)
+
+				// Perform checks related to alternative operations
+				if( general.minerAltOperation )
+				{
+					if( !GeometryUtils.isInsideSphere( x - digitalMiner.getPos().getX(), Math.max( y - digitalMiner.getPos().getY(), 0 ), z - digitalMiner.getPos().getZ(), diameter / 2 ) )
+					{
+						// Skip blocks outside operating boundaries
+						continue;
+					}
+				}
+
+				if(block != null && !digitalMiner.getWorld().isAirBlock(new BlockPos(x, y, z)) && blockState.getBlockHardness(digitalMiner.getWorld(), new BlockPos(x, y, z)) >= 0)
 				{
 					MinerFilter filterFound = null;
 					boolean canFilter = false;
 	
-					if(acceptedItems.containsKey(info))
+					if(acceptedItems.containsKey(blockState))
 					{
-						filterFound = acceptedItems.get(info);
+						filterFound = acceptedItems.get(blockState);
 					}
 					else {
-						ItemStack stack = new ItemStack(info.block, 1, info.meta);
+						ItemStack stack = new ItemStack(block, 1, block.getMetaFromState( blockState ));
 	
-						if(tileEntity.isReplaceStack(stack))
+						if(digitalMiner.isReplaceStack(stack))
 						{
 							continue;
 						}
 	
-						for(MinerFilter filter : tileEntity.filters)
+						for(MinerFilter filter : digitalMiner.filters)
 						{
 							if(filter.canFilter(stack))
 							{
@@ -115,15 +142,16 @@ public class ThreadMinerSearch extends Thread
 							}
 						}
 	
-						acceptedItems.put(info, filterFound);
+						acceptedItems.put(blockState, filterFound);
 					}
 					
-					canFilter = tileEntity.inverse ? filterFound == null : filterFound != null;
+					canFilter = digitalMiner.inverse ? filterFound == null : filterFound != null;
 	
 					if(canFilter)
 					{
-						set(i, new Coord4D(x, y, z, tileEntity.getWorld().provider.getDimension()));
+						set(i, new Coord4D(x, y, z, digitalMiner.getWorld().provider.getDimension()));
 						replaceMap.put(i, filterFound);
+						filterFound.foundOres.add( new BlockPos( x, y, z ) );
 						
 						found++;
 					}
@@ -132,9 +160,9 @@ public class ThreadMinerSearch extends Thread
 		}
 
 		state = State.FINISHED;
-		tileEntity.oresToMine = oresToMine;
-		tileEntity.replaceMap = replaceMap;
-		MekanismUtils.saveChunk(tileEntity);
+		digitalMiner.oresToMine = oresToMine;
+		digitalMiner.replaceMap = replaceMap;
+		MekanismUtils.saveChunk(digitalMiner);
 	}
 	
 	public void set(int i, Coord4D location)

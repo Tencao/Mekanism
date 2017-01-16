@@ -169,6 +169,11 @@ public class TileComponentChunkLoader implements ITileComponent
 	@Override
 	public void write(NBTTagCompound nbtTags) 
 	{
+		if (prevCoord == null){
+			release();
+			prevCoord = Coord4D.get(tileEntity);
+		}
+
 		nbtTags.setTag("prevCoord", prevCoord.write(new NBTTagCompound()));
 		
 		NBTTagList list = new NBTTagList();

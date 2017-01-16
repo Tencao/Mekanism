@@ -1,29 +1,51 @@
 package mekanism.common.content.miner;
 
-import io.netty.buffer.ByteBuf;
-
 import java.util.ArrayList;
+import java.util.List;
 
+import io.netty.buffer.ByteBuf;
 import mekanism.common.util.MekanismUtils;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
+import net.minecraft.util.math.BlockPos;
 
 public abstract class MinerFilter
 {
 	public ItemStack replaceStack;
-	
 	public boolean requireStack;
+
+	// A list of locations where ores matching this filter have been found
+	public List<BlockPos> foundOres = new ArrayList<BlockPos>();
 	
 	public abstract boolean canFilter(ItemStack itemStack);
 
-	public NBTTagCompound write(NBTTagCompound nbtTags)
+	public NBTTagCompound writeToNBT(NBTTagCompound nbtTags)
 	{
 		nbtTags.setBoolean("requireStack", requireStack);
 
 		if(replaceStack != null)
 		{
 			nbtTags.setTag("replaceStack", replaceStack.writeToNBT(new NBTTagCompound()));
+		}
+		
+		if( !foundOres.isEmpty() )
+		{
+			NBTTagList tagList = new NBTTagList();
+			NBTTagCompound tagCompound = new NBTTagCompound();
+			tagCompound.setInteger( "oreCount", foundOres.size() );
+			
+			int[] array = new int[ foundOres.size() * 2 ];
+			for( int i = 0 ; i < foundOres.size() ; i++ )
+			{
+				long pos = foundOres.get( i ).toLong();
+				array[ i * 2     ] = (int)pos;
+				array[ i * 2 + 1 ] = (int)(pos >> 32);
+			}
+			tagCompound.setIntArray( "offsetArray", array );
+			tagList.appendTag( tagCompound );
+			nbtTags.setTag( "foundOres", tagList );
 		}
 		
 		return nbtTags;
@@ -36,6 +58,19 @@ public abstract class MinerFilter
 		if(nbtTags.hasKey("replaceStack"))
 		{
 			replaceStack = ItemStack.loadItemStackFromNBT(nbtTags.getCompoundTag("replaceStack"));
+		}
+		
+		if(nbtTags.hasKey( "foundOres" ))
+		{
+			foundOres.clear();
+			int oreCount = nbtTags.getInteger( "oreCount" );
+			int[] array = nbtTags.getIntArray( "offsetArray" );
+
+			for( int i = 0 ; i < oreCount ; i++ )
+			{
+				long pos = (long)array[ i * 2 + 1 ] << 32 | array[ i * 2 ];
+				foundOres.add( BlockPos.fromLong( pos ) );
+			}
 		}
 	}
 

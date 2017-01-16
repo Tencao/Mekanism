@@ -34,9 +34,9 @@ public class MMaterialFilter extends MinerFilter
 	}
 
 	@Override
-	public NBTTagCompound write(NBTTagCompound nbtTags)
+	public NBTTagCompound writeToNBT(NBTTagCompound nbtTags)
 	{
-		super.write(nbtTags);
+		super.writeToNBT(nbtTags);
 		
 		nbtTags.setInteger("type", 2);
 		materialItem.writeToNBT(nbtTags);
